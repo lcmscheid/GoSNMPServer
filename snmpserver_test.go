@@ -447,6 +447,17 @@ func (suite *ServerTests) TestGetSetOids() {
 			".1.2.4.2.0 = No more variables left in this MIB View (It is past the end of the MIB tree)",
 			string(lines[1]), "data snmpwalk gets: \n%v", string(lines[1]))
 	})
+	suite.Run("SNMPBulkGetNonRepeaterInstance", func() {
+		// RFC 3416 §4.2.3: a non-repeater is answered like a GETNEXT, so one
+		// naming an existing instance gets that instance's successor.
+		result, err := getCmdOutput("snmpbulkget", "-v2c", "-c", "public", "-On", "-Cn1", "-Cr1",
+			serverAddress.String(), "1.2.3.1", "1.2.3")
+		if err != nil {
+			suite.T().Errorf("cmd meet error: %+v", err)
+		}
+		assert.Equalf(suite.T(), []string{".1.2.3.2", ".1.2.3.1"}, responseOIDs(result),
+			"data snmpbulkget gets: \n%v", string(result))
+	})
 	suite.Run("SNMPWalk_UnknownUser", func() {
 		result, err := getCmdOutput("snmpwalk", "-v3", "-n", "public", "-u", "UnknownUser",
 			serverAddress.String(), "1")

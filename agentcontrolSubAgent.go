@@ -297,8 +297,13 @@ func (t *SubAgent) serveGetBulkRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 	for j := uint8(0); j < i.NonRepeaters; j++ {
 		queryForOid := i.Variables[j].Name
 		queryForOidStriped := strings.TrimLeft(queryForOid, ".0")
-		item, _ := t.getForPDUValueControl(queryForOidStriped)
+		item, before := t.getForPDUValueControl(queryForOidStriped)
 		t.Logger.Debugf("(non-repeater) t.getForPDUValueControl. query_for_oid=%v item=%+v ", queryForOid, item)
+		// RFC 3416 §4.2.3: a non-repeater is answered like a GETNEXT, so an
+		// exact match is answered with its successor rather than itself.
+		if item != nil && !before {
+			item = t.NextPDU(item, 0)
+		}
 		if item == nil {
 			ret.Variables = append(ret.Variables, t.getPDUEndOfMibView(queryForOid))
 			continue
