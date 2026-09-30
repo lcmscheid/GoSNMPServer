@@ -145,7 +145,8 @@ func (suite *ResponseForBufferTestSuite) TestSnmpv3EncryptedRequest() {
 	}
 	assert.Equal(suite.T(), "", response.Community)
 	assert.Equal(suite.T(), gosnmp.SNMPError(0x2), response.Error)
-	assert.Equal(suite.T(), uint8(0x0), response.ErrorIndex)
+	// noSuchName for the first varbind, counting from 1 (RFC 3416 §4.2).
+	assert.Equal(suite.T(), uint8(0x1), response.ErrorIndex)
 	assert.NotEqual(suite.T(), nil, response.SecurityParameters)
 	assert.NotEqual(suite.T(), "", response.SecurityParameters.(*gosnmp.UsmSecurityParameters).AuthoritativeEngineID)
 	assert.Equal(suite.T(), "pippo", response.SecurityParameters.(*gosnmp.UsmSecurityParameters).UserName)

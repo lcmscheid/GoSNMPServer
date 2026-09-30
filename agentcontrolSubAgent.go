@@ -65,6 +65,8 @@ func (t *SubAgent) SyncConfig() error {
 
 }
 
+// Serve answers a request. An error Response's ErrorIndex names the varbind that
+// caused it, counting from 1 (RFC 3416 §4.2); 0 is what a success carries.
 func (t *SubAgent) Serve(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, error) {
 	switch i.PDUType {
 	case gosnmp.GetRequest:
@@ -232,7 +234,7 @@ func (t *SubAgent) serveGetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 		if item == nil || before {
 			if ret.Error == gosnmp.NoError {
 				ret.Error = gosnmp.NoSuchName
-				ret.ErrorIndex = uint8(id)
+				ret.ErrorIndex = uint8(id + 1)
 			}
 			ret.Variables = append(ret.Variables, t.getPDUNoSuchInstance(varItem.Name))
 			continue
@@ -241,7 +243,7 @@ func (t *SubAgent) serveGetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 		ctl, snmperr := t.getForPDUValueControlResult(item, i)
 		if snmperr != gosnmp.NoError && ret.Error == gosnmp.NoError {
 			ret.Error = snmperr
-			ret.ErrorIndex = uint8(id)
+			ret.ErrorIndex = uint8(id + 1)
 		}
 		ret.Variables = append(ret.Variables, ctl)
 	}
@@ -264,7 +266,7 @@ func (t *SubAgent) serveTrap(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, error) {
 		if item == nil || before {
 			if ret.Error == gosnmp.NoError {
 				ret.Error = gosnmp.NoSuchName
-				ret.ErrorIndex = uint8(id)
+				ret.ErrorIndex = uint8(id + 1)
 			}
 			ret.Variables = append(ret.Variables, t.getPDUNoSuchInstance(varItem.Name))
 			continue
@@ -273,7 +275,7 @@ func (t *SubAgent) serveTrap(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, error) {
 		ctl, snmperr := t.trapForPDUValueControlResult(item, i, varItem)
 		if snmperr != gosnmp.NoError && ret.Error == gosnmp.NoError {
 			ret.Error = snmperr
-			ret.ErrorIndex = uint8(id)
+			ret.ErrorIndex = uint8(id + 1)
 		}
 		ret.Variables = append(ret.Variables, ctl)
 	}
@@ -307,7 +309,7 @@ func (t *SubAgent) serveGetBulkRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 		ctl, snmperr := t.getForPDUValueControlResult(item, i)
 		if snmperr != gosnmp.NoError && ret.Error == gosnmp.NoError {
 			ret.Error = snmperr
-			ret.ErrorIndex = j
+			ret.ErrorIndex = j + 1
 		}
 		ret.Variables = append(ret.Variables, ctl)
 	}
@@ -340,7 +342,7 @@ func (t *SubAgent) serveGetBulkRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 			ctl, snmperr := t.getForPDUValueControlResult(item, i)
 			if snmperr != gosnmp.NoError && ret.Error == gosnmp.NoError {
 				ret.Error = snmperr
-				ret.ErrorIndex = k
+				ret.ErrorIndex = k + 1
 			}
 			lastItem = item
 			ret.Variables = append(ret.Variables, ctl)
@@ -357,7 +359,7 @@ func (t *SubAgent) serveGetNextRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 	ret.Variables = []gosnmp.SnmpPDU{}
 	// RFC 3416 §4.2.2: every varbind is answered independently, with the
 	// first walkable OID that follows its own name.
-	for _, v := range i.Variables {
+	for id, v := range i.Variables {
 		queryForOid := v.Name
 		item := t.getNextWalkable(queryForOid)
 		t.Logger.Debugf("serveGetNextRequest of %v. item=%v ", queryForOid, item)
@@ -368,7 +370,7 @@ func (t *SubAgent) serveGetNextRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 		ctl, snmperr := t.getForPDUValueControlResult(item, i)
 		if snmperr != gosnmp.NoError && ret.Error == gosnmp.NoError {
 			ret.Error = snmperr
-			ret.ErrorIndex = uint8(item.id)
+			ret.ErrorIndex = uint8(id + 1)
 		}
 		t.Logger.Debugf("getnext: append oid=%v. result=%v err=%v", item.OID, ctl, snmperr)
 		ret.Variables = append(ret.Variables, ctl)
@@ -389,7 +391,7 @@ func (t *SubAgent) serveSetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 		if item == nil || before {
 			if ret.Error == gosnmp.NoError {
 				ret.Error = gosnmp.NoSuchName
-				ret.ErrorIndex = uint8(id)
+				ret.ErrorIndex = uint8(id + 1)
 			}
 			ret.Variables = append(ret.Variables, t.getPDUNoSuchInstance(varItem.Name))
 			continue
@@ -397,7 +399,7 @@ func (t *SubAgent) serveSetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 		if t.checkPermission(item, i) != PermissionAllowanceAllowed {
 			if ret.Error == gosnmp.NoError {
 				ret.Error = gosnmp.NoAccess
-				ret.ErrorIndex = uint8(id)
+				ret.ErrorIndex = uint8(id + 1)
 			}
 			ret.Variables = append(ret.Variables, t.getPDUNil(varItem.Name))
 			continue
@@ -410,7 +412,7 @@ func (t *SubAgent) serveSetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 				if i.Version == gosnmp.Version1 {
 					ret.Error = gosnmp.NoSuchName
 				}
-				ret.ErrorIndex = uint8(id)
+				ret.ErrorIndex = uint8(id + 1)
 			}
 			ret.Variables = append(ret.Variables, t.getPDUNil(varItem.Name))
 			continue
@@ -421,7 +423,7 @@ func (t *SubAgent) serveSetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 				if err := recover(); err != nil {
 					if t.UserErrorMarkPacket && ret.Error == gosnmp.NoError {
 						ret.Error = gosnmp.GenErr
-						ret.ErrorIndex = uint8(id)
+						ret.ErrorIndex = uint8(id + 1)
 					}
 					ret.Variables = append(ret.Variables,
 						t.getPDUOctetString(varItem.Name, fmt.Sprintf("ERROR: %+v", err)))
@@ -435,10 +437,10 @@ func (t *SubAgent) serveSetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 						if i.Version == gosnmp.Version1 {
 							ret.Error = gosnmp.BadValue
 						}
-						ret.ErrorIndex = uint8(id)
+						ret.ErrorIndex = uint8(id + 1)
 					} else if t.UserErrorMarkPacket {
 						ret.Error = gosnmp.GenErr
-						ret.ErrorIndex = uint8(id)
+						ret.ErrorIndex = uint8(id + 1)
 					}
 				}
 				ret.Variables = append(ret.Variables,
