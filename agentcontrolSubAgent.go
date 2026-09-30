@@ -304,6 +304,9 @@ func (t *SubAgent) serveGetBulkRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 		if item != nil && !before {
 			item = t.NextPDU(item, 0)
 		}
+		for item != nil && (item.NonWalkable || item.OnGet == nil) {
+			item = t.NextPDU(item, 0)
+		}
 		if item == nil {
 			ret.Variables = append(ret.Variables, t.getPDUEndOfMibView(queryForOid))
 			continue

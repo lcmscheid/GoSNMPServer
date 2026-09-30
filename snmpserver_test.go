@@ -166,6 +166,17 @@ func (suite *ServerTests) TestErrors() {
 		lines := bytes.Split(bytes.TrimSpace(result), []byte("iso"))
 		assert.Equalf(suite.T(), 4+2, len(lines), "data snmpwalk gets: \n%v", string(result))
 	})
+	suite.Run("SNMPBulkGetNonRepeaterSkipsNonWalkable", func() {
+		// A non-repeater is answered like a GETNEXT, which skips 1.2.4.3 and
+		// 1.2.4.4 (NonWalkable) on its way from 1.2.4.2 to 1.2.4.5.
+		result, err := getCmdOutput("snmpbulkget", "-v2c", "-c", "public", "-On", "-Cn1", "-Cr1",
+			serverAddress.String(), "1.2.4.2", "1.2.4.4")
+		if err != nil {
+			suite.T().Errorf("cmd meet error: %+v", err)
+		}
+		assert.Equalf(suite.T(), []string{".1.2.4.5", ".1.2.4.5"}, responseOIDs(result),
+			"data snmpbulkget gets: \n%v", string(result))
+	})
 	suite.Run("SNMPGetPermissionDenied", func() {
 		result, err := getCmdOutput("snmpget", "-v2c", "-c", "public",
 			serverAddress.String(), "1.2.4.4")
