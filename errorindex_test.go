@@ -9,7 +9,7 @@ import (
 
 // TestErrorIndexNamesTheFailingVarbind checks that an error Response points
 // error-index at the variable binding that caused it, counting from 1 (RFC 3416
-// §4.2.1, §4.2.2, §4.2.3, §4.2.5). Zero is what a successful Response carries.
+// §4.2.1, §4.2.2, §4.2.3, §4.2.5, §4.2.7). Zero is what a successful Response carries.
 //
 // The failing varbind is always the second one in the request, while the item
 // that fails sits fourth in the OID table, so an index taken from the table
@@ -18,6 +18,9 @@ func TestErrorIndexNamesTheFailingVarbind(t *testing.T) {
 	ok := func() (interface{}, error) { return Asn1IntegerWrap(1), nil }
 	fails := func() (interface{}, error) { return nil, errors.New("TestError") }
 	set := func(interface{}) error { return nil }
+	failSet := func(interface{}) error { return errors.New("TestError") }
+	trap := func(bool, gosnmp.SnmpPDU) (interface{}, error) { return Asn1IntegerWrap(1), nil }
+	failTrap := func(bool, gosnmp.SnmpPDU) (interface{}, error) { return nil, errors.New("TestError") }
 
 	master := &MasterAgent{
 		Logger:         NewDiscardLogger(),
@@ -26,11 +29,10 @@ func TestErrorIndexNamesTheFailingVarbind(t *testing.T) {
 			CommunityIDs:        []string{"public"},
 			UserErrorMarkPacket: true,
 			OIDs: []*PDUValueControlItem{
-				{OID: "1.2.3.0", Type: gosnmp.Integer, OnGet: ok, OnSet: set},
-				{OID: "1.2.3.1", Type: gosnmp.Integer, OnGet: ok, OnSet: set},
-				{OID: "1.2.3.2", Type: gosnmp.Integer, OnGet: ok}, // read-only
-				{OID: "1.2.3.3", Type: gosnmp.Integer, OnGet: fails,
-					OnSet: func(interface{}) error { return errors.New("TestError") }},
+				{OID: "1.2.3.0", Type: gosnmp.Integer, OnGet: ok, OnSet: set, OnTrap: trap},
+				{OID: "1.2.3.1", Type: gosnmp.Integer, OnGet: ok, OnSet: set, OnTrap: trap},
+				{OID: "1.2.3.2", Type: gosnmp.Integer, OnGet: ok, OnTrap: trap}, // read-only
+				{OID: "1.2.3.3", Type: gosnmp.Integer, OnGet: fails, OnSet: failSet, OnTrap: failTrap},
 			},
 		}},
 	}
@@ -65,6 +67,9 @@ func TestErrorIndexNamesTheFailingVarbind(t *testing.T) {
 			vars:    []gosnmp.SnmpPDU{integer("1.2.3.1"), integer("1.2.3.2")},
 			wantErr: gosnmp.NotWritable},
 		{name: "set handler error", pdu: gosnmp.SetRequest,
+			vars:    []gosnmp.SnmpPDU{integer("1.2.3.1"), integer("1.2.3.3")},
+			wantErr: gosnmp.GenErr},
+		{name: "inform handler error", pdu: gosnmp.InformRequest,
 			vars:    []gosnmp.SnmpPDU{integer("1.2.3.1"), integer("1.2.3.3")},
 			wantErr: gosnmp.GenErr},
 	}
