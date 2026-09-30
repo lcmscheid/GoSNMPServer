@@ -355,37 +355,25 @@ func (t *SubAgent) serveGetNextRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 
 	ret.PDUType = gosnmp.GetResponse
 	ret.Variables = []gosnmp.SnmpPDU{}
-	length := len(i.Variables)
-	queryForOid := i.Variables[length-1].Name
-	queryForOidStriped := strings.TrimLeft(queryForOid, ".0")
-	t.Logger.Debugf("serveGetNextRequest of %v", queryForOid)
-	item, before := t.getForPDUValueControl(queryForOidStriped)
-	t.Logger.Debugf("t.getForPDUValueControl. query_for_oid=%v item=%v ", queryForOid, item)
-
-	if item == nil {
-		// NOT find for the last
-		ret.Variables = append(ret.Variables, t.getPDUEndOfMibView(queryForOid))
-		return &ret, nil
-	}
-
-	t.Logger.Debugf("i.Variables[id: length]. id=%v length =%v. len(t.OIDs)=%v", item.id, length, len(t.OIDs))
-	for {
-		if !before {
+	// RFC 3416 §4.2.2: every varbind is answered independently, with the
+	// first walkable OID that follows its own name.
+	for _, v := range i.Variables {
+		queryForOid := v.Name
+		queryForOidStriped := strings.TrimLeft(queryForOid, ".0")
+		t.Logger.Debugf("serveGetNextRequest of %v", queryForOid)
+		item, before := t.getForPDUValueControl(queryForOidStriped)
+		t.Logger.Debugf("t.getForPDUValueControl. query_for_oid=%v item=%v ", queryForOid, item)
+		if item != nil && !before {
 			item = t.NextPDU(item, 0)
-			if item == nil {
-				break
-			}
-		} else {
-			before = false
 		}
-
-		if len(ret.Variables) >= length {
-			break
-		}
-
-		if item.NonWalkable || item.OnGet == nil {
+		for item != nil && (item.NonWalkable || item.OnGet == nil) {
 			t.Logger.Debugf("getnext: oid=%v. skip for non walkable", item.OID)
-			continue // skip non-walkable items
+			item = t.NextPDU(item, 0)
+		}
+
+		if item == nil {
+			ret.Variables = append(ret.Variables, t.getPDUEndOfMibView(queryForOid))
+			continue
 		}
 		ctl, snmperr := t.getForPDUValueControlResult(item, i)
 		if snmperr != gosnmp.NoError && ret.Error == gosnmp.NoError {
@@ -394,11 +382,6 @@ func (t *SubAgent) serveGetNextRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 		}
 		t.Logger.Debugf("getnext: append oid=%v. result=%v err=%v", item.OID, ctl, snmperr)
 		ret.Variables = append(ret.Variables, ctl)
-	}
-
-	if len(ret.Variables) == 0 {
-		// NOT find for the last
-		ret.Variables = append(ret.Variables, t.getPDUEndOfMibView(queryForOid))
 	}
 
 	return &ret, nil

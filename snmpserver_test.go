@@ -281,6 +281,16 @@ func (suite *ServerTests) TestGetSetOids() {
 		assert.NotEqual(suite.T(), []byte{}, result, "data SNMPGetNext gets: \n%v", string(result))
 		assert.Equalf(suite.T(), 1, len(lines), "data SNMPGetNext gets: \n%v", string(result))
 	})
+	suite.Run("SNMPGetNextMultipleVarbinds", func() {
+		// RFC 3416 §4.2.2: each varbind is answered with its own successor.
+		result, err := getCmdOutput("snmpgetnext", "-v2c", "-c", "public", "-On",
+			serverAddress.String(), "1.2.3.1", "1.2.3.2")
+		if err != nil {
+			suite.T().Errorf("cmd meet error: %+v", err)
+		}
+		assert.Equalf(suite.T(), []string{".1.2.3.2", ".1.2.3.3"}, responseOIDs(result),
+			"data SNMPGetNext gets: \n%v", string(result))
+	})
 	suite.Run("SNMPWalk", func() {
 		result, err := getCmdOutput("snmpwalk", "-v2c", "-c", "public",
 			serverAddress.String(), "1")
@@ -647,4 +657,14 @@ func getCmdOutput(s0 string, s ...string) ([]byte, error) {
 	result, err := val.Output()
 	val.Wait()
 	return result, err
+}
+
+// responseOIDs returns the OID at the start of each line of net-snmp output
+// printed with -On.
+func responseOIDs(result []byte) []string {
+	var oids []string
+	for _, line := range bytes.Split(bytes.TrimSpace(result), []byte("\n")) {
+		oids = append(oids, string(bytes.SplitN(line, []byte(" = "), 2)[0]))
+	}
+	return oids
 }
