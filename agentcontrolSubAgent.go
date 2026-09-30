@@ -404,7 +404,12 @@ func (t *SubAgent) serveSetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 		}
 		if item.OnSet == nil {
 			if ret.Error == gosnmp.NoError {
-				ret.Error = gosnmp.ReadOnly
+				// An SNMPv2 entity never generates readOnly (RFC 3416 §4.2);
+				// RFC 3584 §4.4 maps notWritable to noSuchName for v1.
+				ret.Error = gosnmp.NotWritable
+				if i.Version == gosnmp.Version1 {
+					ret.Error = gosnmp.NoSuchName
+				}
 				ret.ErrorIndex = uint8(id)
 			}
 			ret.Variables = append(ret.Variables, t.getPDUNil(varItem.Name))
@@ -423,9 +428,18 @@ func (t *SubAgent) serveSetRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, er
 				}
 			}()
 			if err := item.OnSet(varItem.Value); err != nil {
-				if t.UserErrorMarkPacket && ret.Error == gosnmp.NoError {
-					ret.Error = gosnmp.GenErr
-					ret.ErrorIndex = uint8(id)
+				if ret.Error == gosnmp.NoError {
+					// wrongType is SNMPv2's; RFC 3584 §4.4 maps it to badValue for v1.
+					if errors.Is(err, ErrWrongType) {
+						ret.Error = gosnmp.WrongType
+						if i.Version == gosnmp.Version1 {
+							ret.Error = gosnmp.BadValue
+						}
+						ret.ErrorIndex = uint8(id)
+					} else if t.UserErrorMarkPacket {
+						ret.Error = gosnmp.GenErr
+						ret.ErrorIndex = uint8(id)
+					}
 				}
 				ret.Variables = append(ret.Variables,
 					t.getPDUOctetString(varItem.Name, fmt.Sprintf("ERROR: %+v", err)))

@@ -2,6 +2,7 @@ package GoSNMPServer
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"os/exec"
 	"strings"
@@ -137,6 +138,18 @@ func (suite *ServerTests) TestErrors() {
 						},
 						Document: "SetOnly",
 					},
+					{
+						OID:         "1.2.4.7",
+						Type:        gosnmp.Integer,
+						NonWalkable: true,
+						OnGet: func() (value interface{}, err error) {
+							return Asn1IntegerWrap(0), nil
+						},
+						OnSet: func(value interface{}) (err error) {
+							return fmt.Errorf("want an integer, got %T: %w", value, ErrWrongType)
+						},
+						Document: "WrongType",
+					},
 				},
 			},
 		},
@@ -230,15 +243,52 @@ func (suite *ServerTests) TestErrors() {
 			}
 		})
 
+		// RFC 3416 §4.2 keeps readOnly for SNMPv1 compatibility only: an
+		// SNMPv2 entity never generates it, and answers notWritable instead.
 		suite.Run("CouldNotSet", func() {
 			result, err := getCmdOutput("snmpset", "-v2c", "-c", "public", serverAddress.String(),
 				"1.2.4.3", "a", "1.2.3.13")
-			if err != nil {
-				errmsg := string(err.(*exec.ExitError).Stderr)
-				if !strings.Contains(errmsg, "(readOnly)") {
-					suite.T().Errorf("cmd meet error: %+v.\nresultErr=%v\n resultout=%v",
-						err, errmsg, string(result))
-				}
+			if err == nil {
+				suite.T().Fatalf("set of a read-only item succeeded: %v", string(result))
+			}
+			errmsg := string(err.(*exec.ExitError).Stderr)
+			if !strings.Contains(errmsg, "notWritable") {
+				suite.T().Errorf("want notWritable.\nresultErr=%v\n resultout=%v", errmsg, string(result))
+			}
+		})
+		// SNMPv1 has neither status; RFC 3584 §4.4 maps notWritable to
+		// noSuchName and wrongType to badValue.
+		suite.Run("CouldNotSetV1", func() {
+			result, err := getCmdOutput("snmpset", "-v1", "-c", "public", serverAddress.String(),
+				"1.2.4.3", "a", "1.2.3.13")
+			if err == nil {
+				suite.T().Fatalf("set of a read-only item succeeded: %v", string(result))
+			}
+			errmsg := string(err.(*exec.ExitError).Stderr)
+			if !strings.Contains(errmsg, "noSuchName") {
+				suite.T().Errorf("want noSuchName.\nresultErr=%v\n resultout=%v", errmsg, string(result))
+			}
+		})
+		suite.Run("WrongTypeV1", func() {
+			result, err := getCmdOutput("snmpset", "-v1", "-c", "public", serverAddress.String(),
+				"1.2.4.7", "s", "not an integer")
+			if err == nil {
+				suite.T().Fatalf("set of the wrong type succeeded: %v", string(result))
+			}
+			errmsg := string(err.(*exec.ExitError).Stderr)
+			if !strings.Contains(errmsg, "badValue") {
+				suite.T().Errorf("want badValue.\nresultErr=%v\n resultout=%v", errmsg, string(result))
+			}
+		})
+		suite.Run("WrongType", func() {
+			result, err := getCmdOutput("snmpset", "-v2c", "-c", "public", serverAddress.String(),
+				"1.2.4.7", "s", "not an integer")
+			if err == nil {
+				suite.T().Fatalf("set of the wrong type succeeded: %v", string(result))
+			}
+			errmsg := string(err.(*exec.ExitError).Stderr)
+			if !strings.Contains(errmsg, "wrongType") {
+				suite.T().Errorf("want wrongType.\nresultErr=%v\n resultout=%v", errmsg, string(result))
 			}
 		})
 	})
