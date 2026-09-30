@@ -67,7 +67,6 @@ func (t *SubAgent) SyncConfig() error {
 
 // Serve answers a request. An error Response's ErrorIndex names the varbind that
 // caused it, counting from 1 (RFC 3416 §4.2); 0 is what a success carries.
-// markError keeps that rule in one place.
 func (t *SubAgent) Serve(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, error) {
 	switch i.PDUType {
 	case gosnmp.GetRequest:
@@ -88,6 +87,7 @@ func (t *SubAgent) Serve(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket, error) {
 // markError sets the Response's error-status to status and its error-index to
 // the varbind at position pos of the request (counted from 0), unless an
 // earlier varbind has already failed: the first error is the one reported.
+// gosnmp holds error-index in a uint8, so a failure past varbind 255 wraps.
 func markError(ret *gosnmp.SnmpPacket, status gosnmp.SNMPError, pos int) {
 	if ret.Error != gosnmp.NoError {
 		return

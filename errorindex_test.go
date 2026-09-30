@@ -9,7 +9,11 @@ import (
 
 // TestErrorIndexNamesTheFailingVarbind checks that an error Response points
 // error-index at the variable binding that caused it, counting from 1 (RFC 3416
-// §4.2.1, §4.2.2, §4.2.3, §4.2.5, §4.2.7). Zero is what a successful Response carries.
+// §4.2.1, §4.2.2, §4.2.3, §4.2.5). Zero is what a successful Response carries.
+//
+// The inform case checks the indexing only. RFC 3416 §4.2.7 has an Inform's
+// Response carry no error-status but tooBig, so the genErr itself is not the
+// RFC's answer.
 //
 // The failing varbind is always the second one in the request, while the item
 // that fails sits fourth in the OID table, so an index taken from the table
