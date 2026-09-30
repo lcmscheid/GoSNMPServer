@@ -296,17 +296,9 @@ func (t *SubAgent) serveGetBulkRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 	t.Logger.Debugf("handle non-repeaters (%d)", i.NonRepeaters)
 	for j := uint8(0); j < i.NonRepeaters; j++ {
 		queryForOid := i.Variables[j].Name
-		queryForOidStriped := strings.TrimLeft(queryForOid, ".0")
-		item, before := t.getForPDUValueControl(queryForOidStriped)
-		t.Logger.Debugf("(non-repeater) t.getForPDUValueControl. query_for_oid=%v item=%+v ", queryForOid, item)
-		// RFC 3416 §4.2.3: a non-repeater is answered like a GETNEXT, so an
-		// exact match is answered with its successor rather than itself.
-		if item != nil && !before {
-			item = t.NextPDU(item, 0)
-		}
-		for item != nil && (item.NonWalkable || item.OnGet == nil) {
-			item = t.NextPDU(item, 0)
-		}
+		// RFC 3416 §4.2.3: a non-repeater is answered like a GETNEXT.
+		item := t.getNextWalkable(queryForOid)
+		t.Logger.Debugf("(non-repeater) query_for_oid=%v item=%+v ", queryForOid, item)
 		if item == nil {
 			ret.Variables = append(ret.Variables, t.getPDUEndOfMibView(queryForOid))
 			continue
@@ -367,18 +359,8 @@ func (t *SubAgent) serveGetNextRequest(i *gosnmp.SnmpPacket) (*gosnmp.SnmpPacket
 	// first walkable OID that follows its own name.
 	for _, v := range i.Variables {
 		queryForOid := v.Name
-		queryForOidStriped := strings.TrimLeft(queryForOid, ".0")
-		t.Logger.Debugf("serveGetNextRequest of %v", queryForOid)
-		item, before := t.getForPDUValueControl(queryForOidStriped)
-		t.Logger.Debugf("t.getForPDUValueControl. query_for_oid=%v item=%v ", queryForOid, item)
-		if item != nil && !before {
-			item = t.NextPDU(item, 0)
-		}
-		for item != nil && (item.NonWalkable || item.OnGet == nil) {
-			t.Logger.Debugf("getnext: oid=%v. skip for non walkable", item.OID)
-			item = t.NextPDU(item, 0)
-		}
-
+		item := t.getNextWalkable(queryForOid)
+		t.Logger.Debugf("serveGetNextRequest of %v. item=%v ", queryForOid, item)
 		if item == nil {
 			ret.Variables = append(ret.Variables, t.getPDUEndOfMibView(queryForOid))
 			continue
@@ -489,6 +471,20 @@ func (t *SubAgent) getForPDUValueControl(oid string) (*PDUValueControlItem, bool
 		return t.OIDs[0], true
 	}
 	return nil, false
+}
+
+// getNextWalkable returns the first walkable item whose OID follows oid, as a
+// GETNEXT answers it, or nil when there is none (endOfMibView).
+func (t *SubAgent) getNextWalkable(oid string) *PDUValueControlItem {
+	item, before := t.getForPDUValueControl(strings.TrimLeft(oid, ".0"))
+	if item != nil && !before {
+		item = t.NextPDU(item, 0)
+	}
+	for item != nil && (item.NonWalkable || item.OnGet == nil) {
+		t.Logger.Debugf("getnext: oid=%v. skip for non walkable", item.OID)
+		item = t.NextPDU(item, 0)
+	}
+	return item
 }
 
 func (t *SubAgent) NextPDU(item *PDUValueControlItem, skip int) *PDUValueControlItem {
